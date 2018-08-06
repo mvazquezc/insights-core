@@ -214,12 +214,15 @@ class RegistryPoint(object):
     is a registry point against which further subclasses can register
     datasource implementations by simply declaring them with the same name.
     """
-    def __init__(self, metadata=None, multi_output=False, raw=False):
+    def __init__(self, metadata=None, multi_output=False, raw=False,
+            filterable=False):
         self.metadata = metadata
         self.multi_output = multi_output
         self.raw = raw
+        self.filterable = filterable
         self.__name__ = self.__class__.__name__
-        datasource([], metadata=metadata, multi_output=multi_output, raw=raw)(self)
+        datasource([], metadata=metadata, multi_output=multi_output, raw=raw,
+                filterable=filterable)(self)
 
     def __call__(self, broker):
         for c in reversed(dr.get_delegate(self).deps):
@@ -299,6 +302,13 @@ def _resolve_registry_points(cls, base, dct):
                 # base class, the datasource to the RegistryPoint.
                 point = base.registry[k]
 
+                # TODO: log when RegistryPoint and implementation properties
+                # TODO: aren't the same.
+                delegate = dr.get_delegate(v)
+                v.filterable = delegate.filterable = point.filterable
+                v.raw = delegate.raw = point.raw
+                v.multi_output = delegate.multi_output = point.multi_output
+
                 # the RegistryPoint gets the implementation datasource as a
                 # dependency
                 dr.add_dependency(point, v)
@@ -356,13 +366,13 @@ class simple_file(object):
     Returns:
         function: A datasource that reads all files matching the glob patterns.
     """
-    def __init__(self, path, context=None, kind=TextFileProvider):
+    def __init__(self, path, context=None, kind=TextFileProvider, **kwargs):
         self.path = path
         self.context = context or FSRoots
         self.kind = kind
         self.raw = kind is RawFileProvider
         self.__name__ = self.__class__.__name__
-        datasource(self.context, raw=self.raw)(self)
+        datasource(self.context, raw=self.raw, **kwargs)(self)
 
     def __call__(self, broker):
         ctx = _get_context(self.context, broker)
@@ -385,7 +395,7 @@ class glob_file(object):
     Returns:
         function: A datasource that reads all files matching the glob patterns.
     """
-    def __init__(self, patterns, ignore=None, context=None, kind=TextFileProvider, max_files=1000):
+    def __init__(self, patterns, ignore=None, context=None, kind=TextFileProvider, max_files=1000, **kwargs):
         if not isinstance(patterns, (list, set)):
             patterns = [patterns]
         self.patterns = patterns
@@ -396,7 +406,7 @@ class glob_file(object):
         self.raw = kind is RawFileProvider
         self.max_files = max_files
         self.__name__ = self.__class__.__name__
-        datasource(self.context, multi_output=True, raw=self.raw)(self)
+        datasource(self.context, multi_output=True, raw=self.raw, **kwargs)(self)
 
     def __call__(self, broker):
         ctx = _get_context(self.context, broker)
@@ -451,13 +461,13 @@ class first_file(object):
             and is readable
     """
 
-    def __init__(self, paths, context=None, kind=TextFileProvider):
+    def __init__(self, paths, context=None, kind=TextFileProvider, **kwargs):
         self.paths = paths
         self.context = context or FSRoots
         self.kind = kind
         self.raw = kind is RawFileProvider
         self.__name__ = self.__class__.__name__
-        datasource(self.context, raw=self.raw)(self)
+        datasource(self.context, raw=self.raw, **kwargs)(self)
 
     def __call__(self, broker):
         ctx = _get_context(self.context, broker)
@@ -531,7 +541,7 @@ class simple_command(object):
             no arguments
     """
 
-    def __init__(self, cmd, context=HostContext, split=True, keep_rc=False, timeout=None):
+    def __init__(self, cmd, context=HostContext, split=True, keep_rc=False, timeout=None, **kwargs):
         self.cmd = cmd
         self.context = context
         self.split = split
@@ -540,7 +550,7 @@ class simple_command(object):
         self.timeout = timeout
         COMMANDS[self] = cmd
         self.__name__ = self.__class__.__name__
-        datasource(self.context, raw=self.raw)(self)
+        datasource(self.context, raw=self.raw, **kwargs)(self)
 
     def __call__(self, broker):
         ctx = broker[self.context]
@@ -590,7 +600,7 @@ class foreach_execute(object):
         created by substituting each element of provider into the cmd template.
     """
 
-    def __init__(self, provider, cmd, context=HostContext, split=True, keep_rc=False, timeout=None):
+    def __init__(self, provider, cmd, context=HostContext, split=True, keep_rc=False, timeout=None, **kwargs):
         self.provider = provider
         self.cmd = cmd
         self.context = context
@@ -599,7 +609,7 @@ class foreach_execute(object):
         self.keep_rc = keep_rc
         self.timeout = timeout
         self.__name__ = self.__class__.__name__
-        datasource(self.provider, self.context, multi_output=True, raw=self.raw)(self)
+        datasource(self.provider, self.context, multi_output=True, raw=self.raw, **kwargs)(self)
 
     def __call__(self, broker):
         result = []
@@ -652,7 +662,7 @@ class foreach_collect(object):
             substituting each element of provider into the path template.
     """
 
-    def __init__(self, provider, path, ignore=None, context=HostContext, kind=TextFileProvider):
+    def __init__(self, provider, path, ignore=None, context=HostContext, kind=TextFileProvider, **kwargs):
         self.provider = provider
         self.path = path
         self.ignore = ignore
@@ -661,7 +671,7 @@ class foreach_collect(object):
         self.kind = kind
         self.raw = kind is RawFileProvider
         self.__name__ = self.__class__.__name__
-        datasource(self.provider, self.context, multi_output=True, raw=self.raw)(self)
+        datasource(self.provider, self.context, multi_output=True, raw=self.raw, **kwargs)(self)
 
     def __call__(self, broker):
         result = []
